@@ -480,6 +480,8 @@
 
 /* PWM FAN */
 &pwm2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pwm2m0_pins>;
 	status = "okay";
 };
 

@@ -374,7 +374,8 @@
  */
 &gmac1 {
 	status = "okay";
-	phy-mode = "rgmii";
+	label = "eth0";
+	phy-mode = "rgmii-rxid";
 	phy-supply = <&vcc3v3_switch>;
 	clock_in_out = "output";
 
@@ -389,8 +390,8 @@
 	snps,reset-delays-us = <0 10000 10000>;
 	snps,reset-gpio = <&gpio3 RK_PB7 GPIO_ACTIVE_LOW>;
 
-	tx_delay = <0x0f>;
-	rx_delay = <0x00>;
+	tx_delay = <0x3f>;
+	rx_delay = <0x10>;
 
 	fixed-link {
 		speed = <1000>;
@@ -717,6 +718,7 @@
 	};
 };
 
+/* pwm fan */
 &pwm3 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pwm3m1_pins>;

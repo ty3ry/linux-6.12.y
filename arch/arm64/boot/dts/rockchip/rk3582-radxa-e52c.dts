@@ -309,6 +309,10 @@
 	status = "okay";
 };
 
+&pd_npu {
+	domain-supply = <&vdd_npu_s0>;
+};
+
 &pinctrl {
 	keys {
 		btn_0: button-0 {

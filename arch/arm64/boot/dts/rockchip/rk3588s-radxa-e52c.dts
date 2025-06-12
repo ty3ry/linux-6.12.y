@@ -325,6 +325,10 @@
 	domain-supply = <&vdd_gpu_s0>;
 };
 
+&pd_npu {
+	domain-supply = <&vdd_npu_s0>;
+};
+
 /* rtl8125b eth0 */
 &pcie2x1l1 {
 	pinctrl-names = "default";

@@ -9,7 +9,6 @@ Compute Accelerators
 
    introduction
    qaic/index
-   rocket/index
 
 .. only::  subproject and html
 

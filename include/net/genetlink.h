@@ -122,7 +122,6 @@ struct genl_family {
  * @family: generic netlink family
  * @nlhdr: netlink message header
  * @genlhdr: generic netlink message header
- * @userhdr: user specific header
  * @attrs: netlink attributes
  * @_net: network namespace
  * @user_ptr: user pointers
@@ -134,7 +133,6 @@ struct genl_info {
 	const struct genl_family *family;
 	const struct nlmsghdr *	nlhdr;
 	struct genlmsghdr *	genlhdr;
-	void *			userhdr;
 	struct nlattr **	attrs;
 	possible_net_t		_net;
 	void *			user_ptr[2];
@@ -149,6 +147,11 @@ static inline struct net *genl_info_net(const struct genl_info *info)
 static inline void genl_info_net_set(struct genl_info *info, struct net *net)
 {
 	write_pnet(&info->_net, net);
+}
+
+static inline void *genl_info_userhdr(const struct genl_info *info)
+{
+	return (u8 *)info->genlhdr + GENL_HDRLEN;
 }
 
 #define GENL_SET_ERR_MSG(info, msg) NL_SET_ERR_MSG((info)->extack, msg)

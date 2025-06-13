@@ -172,6 +172,28 @@ static int call_netdevice_notifiers_extack(unsigned long val,
 					   struct net_device *dev,
 					   struct netlink_ext_ack *extack);
 
+/*
+ * The @dev_base_head list is protected by @dev_base_lock and the rtnl
+ * semaphore.
+ *
+ * Pure readers hold dev_base_lock for reading, or rcu_read_lock()
+ *
+ * Writers must hold the rtnl semaphore while they loop through the
+ * dev_base_head list, and hold dev_base_lock for writing when they do the
+ * actual updates.  This allows pure readers to access the list even
+ * while a writer is preparing to update it.
+ *
+ * To put it another way, dev_base_lock is held for writing only to
+ * protect against pure readers; the rtnl semaphore provides the
+ * protection against other writers.
+ *
+ * See, for example usages, register_netdevice() and
+ * unregister_netdevice(), which must be called with the rtnl
+ * semaphore held.
+ */
+DEFINE_RWLOCK(dev_base_lock);
+EXPORT_SYMBOL(dev_base_lock);
+
 static DEFINE_MUTEX(ifalias_mutex);
 
 /* protects napi_hash addition/deletion and napi_gen_id */
@@ -403,10 +425,12 @@ static void list_netdevice(struct net_device *dev)
 
 	ASSERT_RTNL();
 
+	write_lock(&dev_base_lock);
 	list_add_tail_rcu(&dev->dev_list, &net->dev_base_head);
 	netdev_name_node_add(net, dev->name_node);
 	hlist_add_head_rcu(&dev->index_hlist,
 			   dev_index_hash(net, dev->ifindex));
+	write_unlock(&dev_base_lock);
 
 	netdev_for_each_altname(dev, name_node)
 		netdev_name_node_add(net, name_node);
@@ -433,9 +457,11 @@ static void unlist_netdevice(struct net_device *dev)
 		netdev_name_node_del(name_node);
 
 	/* Unlink dev from the device chain */
+	write_lock(&dev_base_lock);
 	list_del_rcu(&dev->dev_list);
 	netdev_name_node_del(dev->name_node);
 	hlist_del_rcu(&dev->index_hlist);
+	write_unlock(&dev_base_lock);
 
 	dev_base_seq_inc(dev_net(dev));
 }
@@ -788,9 +814,9 @@ struct napi_struct *netdev_napi_by_id(struct net *net, unsigned int napi_id)
  *	@net: the applicable net namespace
  *	@name: name to find
  *
- *	Find an interface by name. Must be called under RTNL semaphore.
- *	If the name is found a pointer to the device is returned.
- *	If the name is not found then %NULL is returned. The
+ *	Find an interface by name. Must be called under RTNL semaphore
+ *	or @dev_base_lock. If the name is found a pointer to the device
+ *	is returned. If the name is not found then %NULL is returned. The
  *	reference counters are not incremented so the caller must be
  *	careful with locks.
  */
@@ -871,7 +897,8 @@ EXPORT_SYMBOL(netdev_get_by_name);
  *	Search for an interface by index. Returns %NULL if the device
  *	is not found or a pointer to the device. The device has not
  *	had its reference counter increased so the caller must be careful
- *	about locking. The caller must hold the RTNL semaphore.
+ *	about locking. The caller must hold either the RTNL semaphore
+ *	or @dev_base_lock.
  */
 
 struct net_device *__dev_get_by_index(struct net *net, int ifindex)
@@ -1322,11 +1349,15 @@ rollback:
 
 	netdev_adjacent_rename_links(dev, oldname);
 
+	write_lock(&dev_base_lock);
 	netdev_name_node_del(dev->name_node);
+	write_unlock(&dev_base_lock);
 
 	synchronize_net();
 
+	write_lock(&dev_base_lock);
 	netdev_name_node_add(net, dev->name_node);
+	write_unlock(&dev_base_lock);
 
 	ret = call_netdevice_notifiers(NETDEV_CHANGENAME, dev);
 	ret = notifier_to_errno(ret);
@@ -3642,9 +3673,22 @@ static int xmit_one(struct sk_buff *skb, struct net_device *dev,
 {
 	unsigned int len;
 	int rc;
-
+#ifdef CONFIG_SHORTCUT_FE
+	/* If this skb has been fast forwarded then we don't want it to
+	 * go to any taps (by definition we're trying to bypass them).
+	 */
+	if (!skb->fast_forwarded) {
+#endif
 	if (dev_nit_active(dev))
 		dev_queue_xmit_nit(skb, dev);
+#ifdef CONFIG_SHORTCUT_FE
+	}
+#endif
+
+#ifdef CONFIG_ETHERNET_PACKET_MANGLE
+	if (dev->eth_mangle_tx && !(skb = dev->eth_mangle_tx(dev, skb)))
+		return NETDEV_TX_OK;
+#endif
 
 	len = skb->len;
 	trace_net_dev_start_xmit(skb, dev);
@@ -5488,6 +5532,11 @@ void netdev_rx_handler_unregister(struct net_device *dev)
 }
 EXPORT_SYMBOL_GPL(netdev_rx_handler_unregister);
 
+#ifdef CONFIG_SHORTCUT_FE
+int (*athrs_fast_nat_recv)(struct sk_buff *skb) __rcu __read_mostly;
+EXPORT_SYMBOL_GPL(athrs_fast_nat_recv);
+#endif
+
 /*
  * Limit the use of PFMEMALLOC reserves to those protocols that implement
  * the special handling of PFMEMALLOC skbs.
@@ -5536,6 +5585,10 @@ static int __netif_receive_skb_core(struct sk_buff **pskb, bool pfmemalloc,
 	int ret = NET_RX_DROP;
 	__be16 type;
 
+#ifdef CONFIG_SHORTCUT_FE
+	int (*fast_recv)(struct sk_buff *skb);
+#endif
+
 	net_timestamp_check(!READ_ONCE(net_hotdata.tstamp_prequeue), skb);
 
 	trace_netif_receive_skb(skb);
@@ -5574,6 +5627,15 @@ another_round:
 			goto out;
 	}
 
+#ifdef CONFIG_SHORTCUT_FE
+	fast_recv = rcu_dereference(athrs_fast_nat_recv);
+	if (fast_recv) {
+		if (fast_recv(skb)) {
+			ret = NET_RX_SUCCESS;
+			goto out;
+		}
+	}
+#endif
 	if (skb_skip_tc_classify(skb))
 		goto skip_classify;
 

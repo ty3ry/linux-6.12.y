@@ -453,7 +453,7 @@
 };
 
 &hdmi_receiver {
-	hpd-gpios = <&gpio2 RK_PB5 GPIO_ACTIVE_HIGH>;
+	hpd-gpios = <&gpio2 RK_PB5 GPIO_ACTIVE_LOW>;
 	pinctrl-0 = <&hdmim1_rx_cec &hdmim1_rx_hpdin &hdmim1_rx_scl &hdmim1_rx_sda &hdmirx_hpd>;
 	pinctrl-names = "default";
 	status = "okay";

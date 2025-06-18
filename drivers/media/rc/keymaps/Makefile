@@ -100,6 +100,7 @@ obj-$(CONFIG_RC_MAP) += \
 			rc-pixelview-new.o \
 			rc-pixelview.o \
 			rc-powercolor-real-angel.o \
+			rc-polytron-audio.o \
 			rc-proteus-2309.o \
 			rc-purpletv.o \
 			rc-pv951.o \
